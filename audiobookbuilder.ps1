@@ -11,18 +11,13 @@ $AudiobookArtist= $fileInfo.Tag.FirstArtist
 $AudiobookAlbum=$fileInfo.Tag.Album
 $AudiobookTitle=$fileInfo.Tag.Album
 $resultFileName= "{0}_{1}.m4b" -f ($AudiobookArtist, $AudiobookAlbum)
-$resultTmpFileName ="tmp_{0}_{1}.m4b" -f ($AudiobookArtist, $AudiobookAlbum)
+
 $chapterContent =""
 $format=""
 $cnt=0
 $CatArguments=""
 $converted = $false
 $duration = New-TimeSpan 
-
-if(Test-Path $resultTmpFileName)
-{
-    Remove-Item $resultTmpFileName
-}
 if(Test-Path $resultFileName)
 {
     Remove-Item $resultFileName
@@ -35,7 +30,6 @@ Write-Host Convert files in Folder $audioFiles
 
 foreach($audio in $audioFiles)
 {    
-    $cnt++
     $audioM4a = $audio.BaseName + ".m4a"   
     if($audio.Extension.Equals(".mp3"))
     {           
@@ -53,18 +47,37 @@ foreach($audio in $audioFiles)
     
     if($converted -or $audio.Extension.Equals(".m4a"))
     {
-        $fileInfo = [TagLib.MPEG.File]::Create((Join-Path (Get-Item -Path ".\") $audioM4a))        
-        MP4Box -quiet -cat $audioM4a $resultTmpFileName 2> $null    
+	    $cnt++
+        $fileInfo = [TagLib.MPEG.File]::Create((Join-Path (Get-Item -Path ".\") $audioM4a))              
         $chapterContent += ("CHAPTER{0}={1:hh\:mm\:ss\:fff}`n" -f ($cnt, $duration))
-        $chapterContent += ("CHAPTER{0}NAME={1}-{2} {3}`n" -f ( $cnt, $fileInfo.Tag.Disc, $fileInfo.Tag.Track, $fileInfo.Tag.Title))
+		
+		if($fileInfo.Tag.Disc -eq "0")
+		{
+			$diskTrackString = $fileInfo.Tag.Track
+		}
+		else
+		{
+			$diskTrackString = "{0}-{1}" -f ($fileInfo.Tag.Disc, $fileInfo.Tag.Track)
+		}
+		
+		
+        $chapterContent += ("CHAPTER{0}NAME={1} {2}`n" -f ( $cnt, $diskTrackString, $fileInfo.Tag.Title))
         $duration +=$fileInfo.Properties.Duration
-        Write-Host "Add"$audioM4a to $resultTmpFileName Total Time: $duration
+        
     }
 }
 
 $chapterContent | Out-File $chapterFileName 
-Write-Host Add Chapter Informations to $resultTmpFileName
-Mp4Box -add $resultTmpFileName -chap $chapterFileName $resultFileName 2>$null
+Write-Host Add Chapter Informations to $resultFileName
+Mp4Box -chap $chapterFileName $resultFileName 2>$null
+
+foreach($m4aaudio in (Get-ChildItem "*.m4a" -Recurse))
+{
+	Write-Host "Add"$m4aaudio to $resultFileName  
+	MP4Box -quiet -cat $m4aaudio $resultFileName 2> $null    
+}
+
+
 
 Write-Host Write artist and album name to $resultFileName
 $resultTag = [TagLib.Aac.File]::Create((Join-Path (Get-Item -Path ".\") $resultFileName))
@@ -83,6 +96,5 @@ if($images.Length -ge 1)
 $resultTag.Save()
 ..\mp4v2-r479-windows-binaries\bin\Windows-Win32\Release\mp4chaps.exe --convert --chapter-qt $resultFileName
 Write-Host Clean up...
-Remove-Item $resultTmpFileName
 Remove-Item $chapterFileName
 Write-Host Done...
